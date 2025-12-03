@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>رزرو نوبت پزشکی</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  
+
   <!-- Telegram Mini App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
@@ -12,64 +12,121 @@
     body {
       font-family: sans-serif;
       direction: rtl;
-      padding: 16px;
+      padding: 20px;
+      background: #121212;
+      color: #e6e6e6;
+      margin: 0;
     }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    .container {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 14px;
+      box-shadow: 0 0 16px rgba(0,0,0,0.4);
+      max-width: 480px;
+      margin: auto;
+    }
+
     label {
       display: block;
-      margin-top: 12px;
-      margin-bottom: 4px;
+      margin-top: 16px;
+      margin-bottom: 6px;
       font-size: 14px;
+      color: #bdbdbd;
     }
+
     input, select, textarea {
       width: 100%;
-      padding: 8px;
-      font-size: 14px;
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 10px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #fff;
+      outline: none;
+      transition: 0.2s;
       box-sizing: border-box;
     }
-    button {
-      margin-top: 16px;
-      padding: 10px;
-      width: 100%;
-      font-size: 16px;
-      cursor: pointer;
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #6c63ff;
+      background: #333;
     }
+
+    button {
+      margin-top: 22px;
+      padding: 12px;
+      width: 100%;
+      background: #6c63ff;
+      border: none;
+      color: white;
+      font-size: 17px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #5a53e6;
+    }
+
     #status {
-      margin-top: 12px;
-      font-size: 14px;
+      margin-top: 16px;
+      font-size: 15px;
+      text-align: center;
+      color: #90caf9;
+    }
+
+    #user-info {
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #eeeeee;
     }
   </style>
 </head>
 
 <body>
-  <h2>رزرو نوبت</h2>
-  <div id="user-info"></div>
 
-  <form id="appointment-form">
-    <label for="doctor">پزشک</label>
-    <select id="doctor" name="doctor" required>
-      <option value="">انتخاب کنید...</option>
-      <option value="dr_a">دکتر A</option>
-      <option value="dr_b">دکتر B</option>
-    </select>
+  <div class="container">
+    <h2>رزرو نوبت</h2>
+    <div id="user-info"></div>
 
-    <label for="date">تاریخ نوبت</label>
-    <input type="date" id="date" name="date" required />
+    <form id="appointment-form">
+      <label for="doctor">پزشک</label>
+      <select id="doctor" name="doctor" required>
+        <option value="">انتخاب کنید...</option>
+        <option value="dr_a">دکتر A</option>
+        <option value="dr_b">دکتر B</option>
+      </select>
 
-    <label for="time">ساعت نوبت</label>
-    <input type="time" id="time" name="time" required />
+      <label for="date">تاریخ نوبت</label>
+      <input type="date" id="date" name="date" required />
 
-    <label for="note">توضیحات (اختیاری)</label>
-    <textarea id="note" name="note" rows="3"></textarea>
+      <label for="time">ساعت نوبت</label>
+      <input type="time" id="time" name="time" required />
 
-    <button type="submit">ثبت نوبت</button>
-  </form>
+      <label for="note">توضیحات (اختیاری)</label>
+      <textarea id="note" name="note" rows="3"></textarea>
 
-  <div id="status"></div>
+      <button type="submit">ثبت نوبت</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
 
   <script>
     const tg = window.Telegram.WebApp;
 
-    tg.expand();
+    tg.expand(); // maximize
 
     const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
     const userInfoDiv = document.getElementById("user-info");
@@ -117,5 +174,6 @@
       }
     });
   </script>
+
 </body>
 </html>
