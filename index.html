@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8" />
+  <title>رزرو نوبت پزشکی</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      direction: rtl;
+      padding: 16px;
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 16px;
+      padding: 10px;
+      width: 100%;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>رزرو نوبت</h2>
+  <div id="user-info"></div>
+
+  <form id="appointment-form">
+    <label for="doctor">پزشک</label>
+    <select id="doctor" name="doctor" required>
+      <option value="">انتخاب کنید...</option>
+      <option value="dr_a">دکتر A</option>
+      <option value="dr_b">دکتر B</option>
+    </select>
+
+    <label for="date">تاریخ نوبت</label>
+    <input type="date" id="date" name="date" required />
+
+    <label for="time">ساعت نوبت</label>
+    <input type="time" id="time" name="time" required />
+
+    <label for="note">توضیحات (اختیاری)</label>
+    <textarea id="note" name="note" rows="3"></textarea>
+
+    <button type="submit">ثبت نوبت</button>
+  </form>
+
+  <div id="status"></div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+
+    tg.expand();
+
+    const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    const userInfoDiv = document.getElementById("user-info");
+
+    if (user) {
+      userInfoDiv.textContent = `سلام ${user.first_name || ""} 👋`;
+    } else {
+      userInfoDiv.textContent = "در حال دریافت اطلاعات کاربر...";
+    }
+
+    const form = document.getElementById("appointment-form");
+    const statusDiv = document.getElementById("status");
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      if (!user) {
+        statusDiv.textContent = "خطا: اطلاعات کاربر دریافت نشد.";
+        return;
+      }
+
+      const payload = {
+        telegram_user: {
+          id: user.id,
+          username: user.username,
+          first_name: user.first_name,
+          last_name: user.last_name
+        },
+        appointment: {
+          doctor: form.doctor.value,
+          date: form.date.value,
+          time: form.time.value,
+          note: form.note.value
+        }
+      };
+
+      statusDiv.textContent = "در حال ارسال نوبت...";
+
+      try {
+        tg.sendData(JSON.stringify(payload));
+        statusDiv.textContent = "درخواست نوبت ارسال شد.";
+      } catch (err) {
+        console.error(err);
+        statusDiv.textContent = "خطا در ارسال اطلاعات.";
+      }
+    });
+  </script>
+</body>
+</html>
