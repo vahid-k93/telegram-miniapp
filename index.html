@@ -1,169 +1,38 @@
-<!doctype html>
-<html lang="fa">
-<head>
-  <meta charset="UTF-8" />
-  <title>رزرو نوبت پزشکی</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Telegram Mini App SDK -->
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-  <!-- Persian Font: Vazirmatn -->
-  <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.0/Vazirmatn-font-face.css" rel="stylesheet" />
-
-  <style>
-    body {
-      font-family: Vazirmatn, sans-serif;
-      direction: rtl;
-      background: #121212;
-      color: #e6e6e6;
-      padding: 20px;
-      margin: 0;
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      font-weight: 600;
-      color: #fff;
-    }
-
-    .container {
-      background: #1e1e1e;
-      padding: 20px;
-      border-radius: 14px;
-      box-shadow: 0 0 16px rgba(0,0,0,0.4);
-      max-width: 480px;
-      margin: auto;
-    }
-
-    label {
-      display: block;
-      margin-top: 16px;
-      margin-bottom: 6px;
-      font-size: 14px;
-      color: #bdbdbd;
-    }
-
-    input, select, textarea {
-      width: 100%;
-      padding: 10px;
-      font-size: 15px;
-      border-radius: 10px;
-      border: 1px solid #444;
-      background: #2a2a2a;
-      color: #fff;
-      outline: none;
-      transition: 0.2s;
-      box-sizing: border-box;
-    }
-
-    input:focus, select:focus, textarea:focus {
-      border-color: #6c63ff;
-      background: #333;
-    }
-
-    button {
-      margin-top: 22px;
-      padding: 12px;
-      width: 100%;
-      background: #6c63ff;
-      border: none;
-      color: white;
-      font-size: 17px;
-      font-weight: 600;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-
-    button:hover {
-      background: #5a53e6;
-    }
-
-    #status {
-      margin-top: 16px;
-      font-size: 15px;
-      text-align: center;
-      color: #90caf9;
-    }
-
-    #user-info {
-      text-align: center;
-      margin-bottom: 10px;
-      font-size: 16px;
-      color: #eeeeee;
-    }
-  </style>
-</head>
-
-<body>
-
-  <div class="container">
-    <h2>رزرو نوبت</h2>
-    <div id="user-info"></div>
-
-    <form id="appointment-form">
-
-      <label for="full_name">نام و نام خانوادگی</label>
-      <input type="text" id="full_name" name="full_name" required />
-
-      <label for="national_id">کد ملی</label>
-      <input type="text" id="national_id" name="national_id" required />
-
-      <label for="phone">شماره تماس</label>
-      <input type="tel" id="phone" name="phone" required />
-
-      <label for="doctor">پزشک</label>
-      <select id="doctor" name="doctor" required>
-        <!-- گزینه‌ها به صورت داینامیک با JS پر می‌شوند -->
-      </select>
-
-      <label for="date">تاریخ نوبت</label>
-      <input type="date" id="date" name="date" required />
-
-      <label for="time">ساعت نوبت</label>
-      <input type="time" id="time" name="time" required />
-
-      <label for="note">توضیحات / علت مراجعه (اختیاری)</label>
-      <textarea id="note" name="note" rows="3"></textarea>
-
-      <button type="submit">ثبت نوبت</button>
-    </form>
-
-    <div id="status"></div>
-  </div>
-
-  <script>
+<script>
     const tg = window.Telegram.WebApp;
     tg.expand();
+    
+    // --- ۱. آدرس وب‌هوک make.com خود را اینجا جایگذاری کنید ---
+    const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/hhfl8sza59snc3al2zd9hygddpidleku'; 
+    // مثال: 'https://hook.us1.make.com/abcdefghijk'
 
+    // --- اطلاعات ثابت دکترها ---
+    const DOCTORS = {
+      "dr_a": "دکتر A - مغز و اعصاب",
+      "dr_b": "دکتر B - قلب و عروق",
+      "dr_c": "دکتر C - داخلی",
+    };
+    
+    // --- انتخابگرهای DOM ---
     const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
     const userInfoDiv = document.getElementById("user-info");
+    const doctorSelect = document.getElementById("doctor");
+    const form = document.getElementById("appointment-form");
+    const statusDiv = document.getElementById("status");
 
+    // --- نمایش نام کاربر ---
     if (user) {
       userInfoDiv.textContent = `سلام ${user.first_name || ""} 👋`;
     } else {
       userInfoDiv.textContent = "در حال دریافت اطلاعات کاربر...";
     }
 
-    // --- دکترها: کلینیک خودت اینجا تعریف می‌کنی ---
-    // key = همون doctor_en که تو Make و Google Sheets استفاده می‌کنی
-    const DOCTORS = {
-      "dr_a": "دکتر A - مغز و اعصاب",
-      "dr_b": "دکتر B - قلب و عروق",
-      "dr_c": "دکتر C - داخلی",
-      // هر دکتر جدید: فقط یک خط به این آبجکت اضافه کن
-      // "dr_soltani": "دکتر سلطانی - غدد"
-    };
-
+    // --- پر کردن لیست دکترها (همانند قبل) ---
     const urlParams = new URLSearchParams(window.location.search);
     const doctorIdFromUrl = urlParams.get("doctor_id");
-    const doctorSelect = document.getElementById("doctor");
 
-    // اگر دکتری از URL آمده باشد → همان را انتخاب و فیلد را قفل کن
     if (doctorIdFromUrl) {
-      doctorSelect.innerHTML = ""; // خالی کردن گزینه‌ها
+      doctorSelect.innerHTML = "";
       const label = DOCTORS[doctorIdFromUrl] || doctorIdFromUrl;
       const opt = document.createElement("option");
       opt.value = doctorIdFromUrl;
@@ -171,7 +40,6 @@
       doctorSelect.appendChild(opt);
       doctorSelect.disabled = true;
     } else {
-      // اگر doctor_id نبود → لیست کامل دکترها را به کاربر نشان بده
       doctorSelect.innerHTML = "";
       const placeholder = document.createElement("option");
       placeholder.value = "";
@@ -186,17 +54,21 @@
       });
     }
 
-    const form = document.getElementById("appointment-form");
-    const statusDiv = document.getElementById("status");
-
-    form.addEventListener("submit", function (e) {
+    // --- ۲. مدیریت ارسال فرم ---
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
 
       if (!user) {
-        statusDiv.textContent = "خطا: اطلاعات کاربر دریافت نشد.";
+        statusDiv.textContent = "خطا: اطلاعات کاربر تلگرام دریافت نشد.";
         return;
       }
+      
+      if (doctorSelect.value === "") {
+           statusDiv.textContent = "لطفاً پزشک مورد نظر را انتخاب کنید.";
+           return;
+      }
 
+      // ساخت Payload (بسته داده)
       const payload = {
         telegram_user: {
           id: user.id,
@@ -210,24 +82,45 @@
           phone: form.phone.value
         },
         appointment: {
-          doctor: doctorSelect.value,      // این همون doctor_en است
+          doctor_id: doctorSelect.value, // کلید انگلیسی
+          doctor_name: DOCTORS[doctorSelect.value], // نام فارسی
           date: form.date.value,
           time: form.time.value,
           note: form.note.value
-        }
+        },
+        // افزودن داده‌های ضروری دیگر برای تأیید امنیت
+        initData: tg.initData 
       };
 
-      statusDiv.textContent = "در حال ارسال نوبت...";
+      statusDiv.textContent = "در حال ارسال نوبت به سیستم...";
 
       try {
-        tg.sendData(JSON.stringify(payload));
-        statusDiv.textContent = "درخواست نوبت ارسال شد.";
+          // --- ۳. استفاده از fetch برای ارسال مستقیم به Webhook ---
+          const response = await fetch(MAKE_WEBHOOK_URL, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+          });
+          
+          if (response.ok) {
+              statusDiv.textContent = "✅ درخواست نوبت با موفقیت ارسال شد.";
+              tg.HapticFeedback.notificationOccurred('success'); // لرزش موفقیت
+              // بستن مینی اپ پس از چند ثانیه یا بلافاصله
+              setTimeout(() => {
+                  tg.close();
+              }, 1500); 
+
+          } else {
+              statusDiv.textContent = `❌ خطا در سیستم رزرو. کد خطا: ${response.status}`;
+              tg.HapticFeedback.notificationOccurred('error');
+          }
+
       } catch (err) {
-        console.error(err);
-        statusDiv.textContent = "خطا در ارسال اطلاعات.";
+          console.error("Fetch Error:", err);
+          statusDiv.textContent = "❌ خطای اتصال شبکه. لطفاً مجدداً تلاش کنید.";
+          tg.HapticFeedback.notificationOccurred('error');
       }
     });
-  </script>
-
-</body>
-</html>
+</script>
