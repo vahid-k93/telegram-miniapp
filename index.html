@@ -1,3 +1,138 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8" />
+  <title>رزرو نوبت پزشکی</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Persian Font: Vazirmatn -->
+  <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.0/Vazirmatn-font-face.css" rel="stylesheet" />
+
+  <style>
+    body {
+      font-family: Vazirmatn, sans-serif;
+      direction: rtl;
+      background: #121212;
+      color: #e6e6e6;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .container {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 14px;
+      box-shadow: 0 0 16px rgba(0,0,0,0.4);
+      max-width: 480px;
+      margin: auto;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #bdbdbd;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 10px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #fff;
+      outline: none;
+      transition: 0.2s;
+      box-sizing: border-box;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #6c63ff;
+      background: #333;
+    }
+
+    button {
+      margin-top: 22px;
+      padding: 12px;
+      width: 100%;
+      background: #6c63ff;
+      border: none;
+      color: white;
+      font-size: 17px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #5a53e6;
+    }
+
+    #status {
+      margin-top: 16px;
+      font-size: 15px;
+      text-align: center;
+      color: #90caf9;
+    }
+
+    #user-info {
+      text-align: center;
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #eeeeee;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <h2>رزرو نوبت</h2>
+    <div id="user-info"></div>
+
+    <form id="appointment-form">
+
+      <label for="full_name">نام و نام خانوادگی</label>
+      <input type="text" id="full_name" name="full_name" required />
+
+      <label for="national_id">کد ملی</label>
+      <input type="text" id="national_id" name="national_id" required />
+
+      <label for="phone">شماره تماس</label>
+      <input type="tel" id="phone" name="phone" required />
+
+      <label for="doctor">پزشک</label>
+      <select id="doctor" name="doctor" required>
+        <!-- گزینه‌ها به صورت داینامیک با JS پر می‌شوند -->
+      </select>
+
+      <label for="date">تاریخ نوبت</label>
+      <input type="date" id="date" name="date" required />
+
+      <label for="time">ساعت نوبت</label>
+      <input type="time" id="time" name="time" required />
+
+      <label for="note">توضیحات / علت مراجعه (اختیاری)</label>
+      <textarea id="note" name="note" rows="3"></textarea>
+
+      <button type="submit">ثبت نوبت</button>
+    </form>
+
+    <div id="status"></div>
+  </div>
 <script>
     const tg = window.Telegram.WebApp;
     tg.expand();
@@ -124,3 +259,5 @@
       }
     });
 </script>
+</body>
+</html>
