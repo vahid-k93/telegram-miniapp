@@ -11,6 +11,14 @@
   <!-- Persian Font: Vazirmatn -->
   <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.0/Vazirmatn-font-face.css" rel="stylesheet" />
 
+  <!-- jQuery (required for persian-datepicker) -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <!-- Persian Datepicker (Jalali calendar) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
+
   <style>
     body {
       font-family: Vazirmatn, sans-serif;
@@ -86,6 +94,7 @@
       font-size: 15px;
       text-align: center;
       color: #90caf9;
+      line-height: 1.6;
     }
 
     #user-info {
@@ -93,6 +102,13 @@
       margin-bottom: 10px;
       font-size: 16px;
       color: #eeeeee;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #9e9e9e;
+      margin-top: 6px;
+      line-height: 1.6;
     }
 
     /* --- Time buttons --- */
@@ -127,11 +143,9 @@
       box-shadow: 0 0 0 2px rgba(108,99,255,0.2) inset;
     }
 
-    .hint {
-      font-size: 12px;
-      color: #9e9e9e;
-      margin-top: 6px;
-      line-height: 1.6;
+    /* Persian datepicker tweaks (optional) */
+    .datepicker-plot-area {
+      font-family: Vazirmatn, sans-serif !important;
     }
   </style>
 </head>
@@ -157,7 +171,7 @@
 
       <label for="doctor">پزشک</label>
       <select id="doctor" name="doctor" required>
-        <!-- گزینه‌ها با JS پر می‌شوند -->
+        <!-- گزینه‌ها به صورت داینامیک با JS پر می‌شوند -->
       </select>
 
       <label for="date">تاریخ نوبت (شمسی)</label>
@@ -165,11 +179,11 @@
         type="text"
         id="date"
         name="date"
-        placeholder="مثلاً 1403/10/25"
+        placeholder="انتخاب تاریخ"
         autocomplete="off"
         required
       />
-      <div class="hint">فعلاً تاریخ را شمسی وارد کنید (YYYY/MM/DD). اگر خواستی تقویم شمسی دکمه‌ای هم اضافه می‌کنم.</div>
+      <div class="hint">روی فیلد تاریخ بزنید تا تقویم شمسی باز شود.</div>
 
       <label>ساعت نوبت</label>
       <div class="time-grid" id="time-grid">
@@ -180,7 +194,7 @@
       </div>
       <div class="hint">یکی از ساعت‌ها را انتخاب کنید.</div>
 
-      <!-- input مخفی برای اینکه فرم required بماند و value به payload برود -->
+      <!-- input مخفی برای ارسال ساعت -->
       <input type="hidden" id="time" name="time" required />
 
       <label for="note">توضیحات / علت مراجعه (اختیاری)</label>
@@ -196,14 +210,17 @@
   const tg = window.Telegram.WebApp;
   tg.expand();
 
+  // --- آدرس وب‌هوک make.com ---
   const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/hhfl8sza59snc3al2zd9hygddpidleku';
 
+  // --- اطلاعات ثابت دکترها ---
   const DOCTORS = {
     "dr_a": "دکتر A - مغز و اعصاب",
     "dr_b": "دکتر B - قلب و عروق",
     "dr_c": "دکتر C - داخلی",
   };
 
+  // --- DOM ---
   const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
   const userInfoDiv = document.getElementById("user-info");
   const doctorSelect = document.getElementById("doctor");
@@ -213,14 +230,14 @@
   const timeGrid = document.getElementById("time-grid");
   const hiddenTime = document.getElementById("time");
 
-  // نمایش نام کاربر
+  // --- نمایش نام کاربر ---
   if (user) {
     userInfoDiv.textContent = `سلام ${user.first_name || ""} 👋`;
   } else {
     userInfoDiv.textContent = "در حال دریافت اطلاعات کاربر...";
   }
 
-  // پر کردن لیست دکترها
+  // --- پر کردن لیست دکترها ---
   const urlParams = new URLSearchParams(window.location.search);
   const doctorIdFromUrl = urlParams.get("doctor_id");
 
@@ -247,45 +264,47 @@
     });
   }
 
-  // انتخاب ساعت با دکمه‌ها
+  // --- تقویم شمسی ---
+  // مقدار خروجی: YYYY/MM/DD
+  $(function () {
+    $("#date").persianDatepicker({
+      format: "YYYY/MM/DD",
+      initialValue: false,
+      autoClose: true,
+      calendar: {
+        persian: { locale: "fa" }
+      },
+      toolbox: {
+        calendarSwitch: false
+      },
+      navigator: {
+        scroll: { enabled: false }
+      }
+    });
+  });
+
+  // --- انتخاب ساعت با دکمه‌ها ---
   timeGrid.addEventListener("click", (e) => {
     const btn = e.target.closest(".time-btn");
     if (!btn) return;
 
-    // active UI
     [...timeGrid.querySelectorAll(".time-btn")].forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
 
-    // set hidden value (همون چیزی که به Make می‌فرستی)
     hiddenTime.value = btn.dataset.hour; // "10" | "11" | "12" | "13"
   });
 
-  // اعتبارسنجی ساده تاریخ شمسی YYYY/MM/DD
-  function isValidJalaliTextDate(s) {
-    // فقط بررسی شکلی؛ تبدیل/اعتبار واقعی روزهای ماه رو بعداً می‌تونیم دقیق‌تر کنیم
-    const m = /^(\d{4})\/(\d{2})\/(\d{2})$/.exec(s);
-    if (!m) return false;
-    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-    if (y < 1300 || y > 1500) return false;
-    if (mo < 1 || mo > 12) return false;
-    if (d < 1 || d > 31) return false;
-    return true;
-  }
+  // --- اعتبارسنجی ساده ---
+  function isValidNationalId(s) { return /^\d{10}$/.test(s); }
+  function isValidPhone(s) { return /^09\d{9}$/.test(s); }
+  function isValidJalaliFormat(s) { return /^(\d{4})\/(\d{2})\/(\d{2})$/.test(s); }
 
-  function isValidNationalId(s) {
-    return /^\d{10}$/.test(s);
-  }
-
-  function isValidPhone(s) {
-    return /^09\d{9}$/.test(s);
-  }
-
-  // ارسال فرم
+  // --- ارسال فرم ---
   form.addEventListener("submit", async function (e) {
     e.preventDefault();
 
     if (!user) {
-      statusDiv.textContent = "خطا: اطلاعات کاربر تلگرام دریافت نشد.";
+      statusDiv.textContent = "خطا: اطلاعات کاربر تلگرام دریافت نشد. (مطمئن شوید داخل تلگرام باز شده)";
       return;
     }
 
@@ -294,19 +313,22 @@
       return;
     }
 
-    if (!isValidNationalId(form.national_id.value.trim())) {
+    const nationalId = form.national_id.value.trim();
+    const phone = form.phone.value.trim();
+    const date = form.date.value.trim();
+
+    if (!isValidNationalId(nationalId)) {
       statusDiv.textContent = "کد ملی معتبر نیست (۱۰ رقم عددی).";
       return;
     }
 
-    if (!isValidPhone(form.phone.value.trim())) {
+    if (!isValidPhone(phone)) {
       statusDiv.textContent = "شماره تماس معتبر نیست (مثال: 09123456789).";
       return;
     }
 
-    const jalaliDate = form.date.value.trim();
-    if (!isValidJalaliTextDate(jalaliDate)) {
-      statusDiv.textContent = "تاریخ شمسی معتبر نیست (مثال: 1403/10/25).";
+    if (!isValidJalaliFormat(date)) {
+      statusDiv.textContent = "تاریخ معتبر نیست. از تقویم انتخاب کنید.";
       return;
     }
 
@@ -324,14 +346,14 @@
       },
       patient: {
         full_name: form.full_name.value,
-        national_id: form.national_id.value,
-        phone: form.phone.value
+        national_id: nationalId,
+        phone: phone
       },
       appointment: {
         doctor_id: doctorSelect.value,
         doctor_name: DOCTORS[doctorSelect.value],
-        date: jalaliDate,         // شمسی
-        time: hiddenTime.value,   // "10"|"11"|"12"|"13"
+        date: date,              // شمسی: YYYY/MM/DD
+        time: hiddenTime.value,  // "10/11/12/13"
         note: form.note.value
       },
       initData: tg.initData
@@ -354,6 +376,7 @@
         statusDiv.textContent = `❌ خطا در سیستم رزرو. کد خطا: ${response.status}`;
         tg.HapticFeedback.notificationOccurred('error');
       }
+
     } catch (err) {
       console.error("Fetch Error:", err);
       statusDiv.textContent = "❌ خطای اتصال شبکه. لطفاً مجدداً تلاش کنید.";
@@ -361,5 +384,6 @@
     }
   });
 </script>
+
 </body>
 </html>
