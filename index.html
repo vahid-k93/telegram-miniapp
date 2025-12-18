@@ -56,10 +56,9 @@
       box-sizing: border-box;
     }
 
-    /* استایل مخصوص برای اینپوت تاریخ */
     input[type="date"] {
       font-family: Vazirmatn, sans-serif;
-      color-scheme: dark; /* آیکون تقویم سفید می‌شود */
+      color-scheme: dark;
     }
 
     input:focus, select:focus, textarea:focus {
@@ -220,13 +219,10 @@
   // ============================================
   // ⚠️ آدرس‌های وب‌هوک ⚠️
   // ============================================
-
-  // ۱. وب‌هوک ثبت نهایی نوبت (Registration)
   const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/hhfl8sza59snc3al2zd9hygddpidleku';
-
-  // ۲. وب‌هوک دریافت ساعت‌های خالی (Get Slots) - آدرس جدید رو اینجا بذار
+  
+  // آدرس وب‌هوک جدید (Get Slots) را اینجا قرار دهید:
   const GET_SLOTS_URL = 'https://hook.eu2.make.com/j78jo3phl99ov9vtwgg8r187nm95wiqd'; 
-
   // ============================================
 
   const DOCTORS = {
@@ -235,7 +231,6 @@
     "dr_c": "دکتر C - داخلی",
   };
 
-  // --- DOM Elements ---
   const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
   const userInfoDiv = document.getElementById("user-info");
   const doctorSelect = document.getElementById("doctor");
@@ -245,7 +240,7 @@
   const hiddenTime = document.getElementById("time");
   const dateInput = document.getElementById("date");
 
-  // --- نمایش نام کاربر ---
+  // --- نمایش کاربر ---
   if (user) {
     userInfoDiv.textContent = `سلام ${user.first_name || ""} 👋`;
   } else {
@@ -279,16 +274,27 @@
     });
   }
 
-  // --- تابع دریافت ساعت‌های خالی ---
-  async function fetchAvailableSlots(doctorId, selectedDate) {
-      if (!doctorId || !selectedDate) return;
+  // 🔄 تابع تبدیل فرمت تاریخ به MM/DD/YYYY برای گوگل شیت
+  function formatDateForSheet(isoDate) {
+      if (!isoDate) return "";
+      // ورودی: 2024-12-30
+      const [year, month, day] = isoDate.split("-");
+      // خروجی: 12/30/2024
+      return `${month}/${day}/${year}`;
+  }
+
+  // --- دریافت ساعت‌ها ---
+  async function fetchAvailableSlots(doctorId, rawDate) {
+      if (!doctorId || !rawDate) return;
+
+      // تبدیل تاریخ به فرمت شیت قبل از ارسال
+      const formattedDate = formatDateForSheet(rawDate);
 
       timeGrid.innerHTML = '<div class="loading-text">⏳ در حال بررسی ظرفیت پزشک...</div>';
       hiddenTime.value = "";
 
       try {
-          // درخواست به سرور
-          const url = `${GET_SLOTS_URL}?doctor_id=${doctorId}&date=${selectedDate}`;
+          const url = `${GET_SLOTS_URL}?doctor_id=${doctorId}&date=${formattedDate}`;
           const response = await fetch(url);
           
           if (!response.ok) throw new Error("Network error");
@@ -302,10 +308,9 @@
       }
   }
 
-  // --- رندر کردن دکمه‌های ساعت ---
+  // --- رندر کردن دکمه‌ها ---
   function renderTimeButtons(slots) {
       timeGrid.innerHTML = "";
-
       if (!slots || slots.length === 0) {
           timeGrid.innerHTML = '<div style="grid-column: span 2; text-align: center;">هیچ ساعتی تعریف نشده است.</div>';
           return;
@@ -317,14 +322,12 @@
           btn.textContent = slot.time;
           btn.dataset.hour = slot.time;
 
-          // بررسی وضعیت پر بودن
           if (slot.is_booked === true || slot.is_booked === "true") {
               btn.classList.add("disabled");
               btn.textContent += " (پر)";
           } else {
               btn.onclick = () => selectTime(btn, slot.time);
           }
-
           timeGrid.appendChild(btn);
       });
   }
@@ -335,22 +338,20 @@
       hiddenTime.value = timeValue;
   }
 
-  // --- ایونت‌های تغییر تاریخ و دکتر ---
-  
-  // وقتی تاریخ تغییر کرد (تقویم میلادی)
+  // --- تریگر کردن تغییرات ---
   dateInput.addEventListener("change", function() {
-      const dateVal = this.value; // فرمت خودکار: YYYY-MM-DD
+      // اینپوت مقدار را به صورت YYYY-MM-DD برمی‌گرداند
+      const rawDate = this.value; 
       const docId = doctorSelect.value;
-      if (docId && dateVal) {
-          fetchAvailableSlots(docId, dateVal);
+      if (docId && rawDate) {
+          fetchAvailableSlots(docId, rawDate);
       }
   });
 
-  // وقتی دکتر تغییر کرد
   doctorSelect.addEventListener("change", () => {
-      const dateVal = dateInput.value;
-      if (dateVal) {
-          fetchAvailableSlots(doctorSelect.value, dateVal);
+      const rawDate = dateInput.value;
+      if (rawDate) {
+          fetchAvailableSlots(doctorSelect.value, rawDate);
       }
   });
 
@@ -368,6 +369,9 @@
       return;
     }
 
+    // تبدیل تاریخ برای ذخیره نهایی در شیت
+    const finalDate = formatDateForSheet(form.date.value);
+
     const payload = {
       telegram_user: {
         id: user.id,
@@ -383,7 +387,7 @@
       appointment: {
         doctor_id: doctorSelect.value,
         doctor_name: DOCTORS[doctorSelect.value],
-        date: form.date.value, // فرمت ارسالی: YYYY-MM-DD
+        date: finalDate, // اینجا تاریخ به صورت MM/DD/YYYY ارسال می‌شود
         time: hiddenTime.value,
         note: form.note.value
       },
