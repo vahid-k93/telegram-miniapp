@@ -5,16 +5,12 @@
   <title>رزرو نوبت پزشکی</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Telegram Mini App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Persian Font: Vazirmatn -->
   <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.0/Vazirmatn-font-face.css" rel="stylesheet" />
 
-  <!-- jQuery (required for persian-datepicker) -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-  <!-- Persian Datepicker (Jalali calendar) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
   <script src="https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
@@ -89,6 +85,11 @@
       background: #5a53e6;
     }
 
+    button.primary:disabled {
+        background: #444;
+        cursor: not-allowed;
+    }
+
     #status {
       margin-top: 16px;
       font-size: 15px;
@@ -143,7 +144,24 @@
       box-shadow: 0 0 0 2px rgba(108,99,255,0.2) inset;
     }
 
-    /* Persian datepicker tweaks (optional) */
+    /* استایل دکمه‌های غیرفعال (پر شده) */
+    .time-btn.disabled {
+        background: #3a1c1c; /* قرمز تیره */
+        border-color: #552222;
+        color: #777;
+        cursor: not-allowed;
+        pointer-events: none; /* غیر قابل کلیک */
+        text-decoration: line-through;
+    }
+
+    .loading-text {
+        text-align: center;
+        color: #ffa726;
+        font-size: 14px;
+        padding: 10px;
+    }
+
+    /* Persian datepicker tweaks */
     .datepicker-plot-area {
       font-family: Vazirmatn, sans-serif !important;
     }
@@ -171,8 +189,7 @@
 
       <label for="doctor">پزشک</label>
       <select id="doctor" name="doctor" required>
-        <!-- گزینه‌ها به صورت داینامیک با JS پر می‌شوند -->
-      </select>
+        </select>
 
       <label for="date">تاریخ نوبت (شمسی)</label>
       <input
@@ -187,20 +204,18 @@
 
       <label>ساعت نوبت</label>
       <div class="time-grid" id="time-grid">
-        <div class="time-btn" data-hour="10">ساعت ۱۰</div>
-        <div class="time-btn" data-hour="11">ساعت ۱۱</div>
-        <div class="time-btn" data-hour="12">ساعت ۱۲</div>
-        <div class="time-btn" data-hour="13">ساعت ۱۳</div>
+         <div style="grid-column: span 2; text-align: center; color: #777;">
+            ابتدا پزشک و تاریخ را انتخاب کنید.
+         </div>
       </div>
-      <div class="hint">یکی از ساعت‌ها را انتخاب کنید.</div>
+      <div class="hint">ساعت‌های قرمز رنگ قبلاً رزرو شده‌اند.</div>
 
-      <!-- input مخفی برای ارسال ساعت -->
       <input type="hidden" id="time" name="time" required />
 
       <label for="note">توضیحات / علت مراجعه (اختیاری)</label>
       <textarea id="note" name="note" rows="3"></textarea>
 
-      <button class="primary" type="submit">ثبت نوبت</button>
+      <button class="primary" type="submit" id="submit-btn">ثبت نوبت</button>
     </form>
 
     <div id="status"></div>
@@ -210,10 +225,18 @@
   const tg = window.Telegram.WebApp;
   tg.expand();
 
-  // --- آدرس وب‌هوک make.com ---
+  // ============================================
+  // ⚠️ تنظیمات آدرس‌های وب‌هوک Make ⚠️
+  // ============================================
+
+  // ۱. وب‌هوک ثبت نهایی نوبت (سناریوی Registration)
   const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/hhfl8sza59snc3al2zd9hygddpidleku';
 
-  // --- اطلاعات ثابت دکترها ---
+  // ۲. وب‌هوک دریافت ساعت‌های خالی (سناریوی Get Slots) - آدرس جدید رو اینجا بذار
+  const GET_SLOTS_URL = 'https://hook.us1.make.com/YOUR_GET_SLOTS_WEBHOOK_URL'; 
+
+  // ============================================
+
   const DOCTORS = {
     "dr_a": "دکتر A - مغز و اعصاب",
     "dr_b": "دکتر B - قلب و عروق",
@@ -226,9 +249,9 @@
   const doctorSelect = document.getElementById("doctor");
   const form = document.getElementById("appointment-form");
   const statusDiv = document.getElementById("status");
-
   const timeGrid = document.getElementById("time-grid");
   const hiddenTime = document.getElementById("time");
+  const dateInput = document.getElementById("date");
 
   // --- نمایش نام کاربر ---
   if (user) {
@@ -264,80 +287,112 @@
     });
   }
 
-  // --- تقویم شمسی ---
-  // مقدار خروجی: YYYY/MM/DD
+  // --- تابع اصلی: دریافت ساعت‌های خالی از Make ---
+  async function fetchAvailableSlots(doctorId, selectedDate) {
+      if (!doctorId || !selectedDate) return;
+
+      // نمایش لودینگ
+      timeGrid.innerHTML = '<div class="loading-text">⏳ در حال بررسی ظرفیت پزشک...</div>';
+      hiddenTime.value = ""; // ریست کردن ساعت انتخابی قبلی
+
+      try {
+          // ارسال درخواست به Make
+          // فرمت درخواست: URL?doctor_id=...&date=...
+          const url = `${GET_SLOTS_URL}?doctor_id=${doctorId}&date=${selectedDate}`;
+          const response = await fetch(url);
+          
+          if (!response.ok) throw new Error("Network error");
+          
+          const data = await response.json(); 
+          // انتظار داریم دیتایی شبیه این بیاید:
+          // { "slots": [ {"time": "10:00", "is_booked": true}, {"time": "11:00", "is_booked": false} ] }
+
+          renderTimeButtons(data.slots);
+
+      } catch (error) {
+          console.error(error);
+          timeGrid.innerHTML = '<div style="color:red; text-align:center;">خطا در دریافت ساعت‌ها. مجدد تلاش کنید.</div>';
+      }
+  }
+
+  // --- ساخت دکمه‌ها بر اساس پاسخ Make ---
+  function renderTimeButtons(slots) {
+      timeGrid.innerHTML = ""; // پاک کردن لودینگ
+
+      if (!slots || slots.length === 0) {
+          timeGrid.innerHTML = '<div style="grid-column: span 2; text-align: center;">هیچ ساعتی تعریف نشده است.</div>';
+          return;
+      }
+
+      slots.forEach(slot => {
+          const btn = document.createElement("div");
+          btn.className = "time-btn";
+          btn.textContent = slot.time;
+          btn.dataset.hour = slot.time; // ذخیره ساعت در اتریبیوت دیتا
+
+          // بررسی وضعیت رزرو
+          // طبق سناریوی قبلی، اگر is_booked برابر true باشد یعنی پر است
+          if (slot.is_booked === true || slot.is_booked === "true") {
+              btn.classList.add("disabled");
+              btn.textContent += " (پر)";
+          } else {
+              // فقط اگر پر نبود، کلیک ایونت داشته باشد
+              btn.onclick = () => selectTime(btn, slot.time);
+          }
+
+          timeGrid.appendChild(btn);
+      });
+  }
+
+  function selectTime(btn, timeValue) {
+      // حذف اکتیو از بقیه
+      document.querySelectorAll(".time-btn").forEach(b => b.classList.remove("active"));
+      // فعال کردن دکمه کلیک شده
+      btn.classList.add("active");
+      // ست کردن مقدار در اینپوت مخفی
+      hiddenTime.value = timeValue;
+  }
+
+  // --- راه‌اندازی تقویم شمسی ---
   $(function () {
     $("#date").persianDatepicker({
-  format: "YYYY/MM/DD",
-  initialValue: false,
-  autoClose: true,
-  persianDigit: false,   // 🔥 مهم: اعداد انگلیسی
-  calendar: {
-    persian: {
-      locale: "fa"
-    }
-  },
-  toolbox: {
-    calendarSwitch: false
-  },
-  navigator: {
-    scroll: {
-      enabled: false
-    }
-  }
-});
-
-  // --- انتخاب ساعت با دکمه‌ها ---
-  timeGrid.addEventListener("click", (e) => {
-    const btn = e.target.closest(".time-btn");
-    if (!btn) return;
-
-    [...timeGrid.querySelectorAll(".time-btn")].forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-
-    hiddenTime.value = btn.dataset.hour; // "10" | "11" | "12" | "13"
+      format: "YYYY/MM/DD",
+      initialValue: false,
+      autoClose: true,
+      persianDigit: false, // ارسال اعداد انگلیسی
+      onSelect: function(unix) {
+          // وقتی کاربر تاریخ را انتخاب کرد:
+          // ۱. تاریخ فرمت شده را می‌گیریم (چون ممکنه هنوز توی اینپوت ننشسته باشه از کتابخونه می‌گیریم یا با یه تاخیر کوچیک)
+          setTimeout(() => {
+              const dateVal = $("#date").val();
+              const docId = doctorSelect.value;
+              // ۲. فراخوانی تابع دریافت ساعت‌ها
+              fetchAvailableSlots(docId, dateVal);
+          }, 100);
+      }
+    });
   });
 
-  // --- اعتبارسنجی ساده ---
-  function isValidNationalId(s) { return /^\d{10}$/.test(s); }
-  function isValidPhone(s) { return /^09\d{9}$/.test(s); }
-  function isValidJalaliFormat(s) { return /^(\d{4})\/(\d{2})\/(\d{2})$/.test(s); }
+  // --- اگر کاربر دکتر را دستی عوض کرد هم دوباره ساعت‌ها لود شود ---
+  doctorSelect.addEventListener("change", () => {
+      const dateVal = document.getElementById("date").value;
+      if (dateVal) {
+          fetchAvailableSlots(doctorSelect.value, dateVal);
+      }
+  });
 
-  // --- ارسال فرم ---
+
+  // --- ارسال فرم ثبت نهایی ---
   form.addEventListener("submit", async function (e) {
     e.preventDefault();
 
     if (!user) {
-      statusDiv.textContent = "خطا: اطلاعات کاربر تلگرام دریافت نشد. (مطمئن شوید داخل تلگرام باز شده)";
-      return;
-    }
-
-    if (doctorSelect.value === "") {
-      statusDiv.textContent = "لطفاً پزشک مورد نظر را انتخاب کنید.";
-      return;
-    }
-
-    const nationalId = form.national_id.value.trim();
-    const phone = form.phone.value.trim();
-    const date = form.date.value.trim();
-
-    if (!isValidNationalId(nationalId)) {
-      statusDiv.textContent = "کد ملی معتبر نیست (۱۰ رقم عددی).";
-      return;
-    }
-
-    if (!isValidPhone(phone)) {
-      statusDiv.textContent = "شماره تماس معتبر نیست (مثال: 09123456789).";
-      return;
-    }
-
-    if (!isValidJalaliFormat(date)) {
-      statusDiv.textContent = "تاریخ معتبر نیست. از تقویم انتخاب کنید.";
+      statusDiv.textContent = "خطا: اطلاعات کاربر تلگرام دریافت نشد.";
       return;
     }
 
     if (!hiddenTime.value) {
-      statusDiv.textContent = "لطفاً ساعت نوبت را انتخاب کنید.";
+      statusDiv.textContent = "لطفاً یک ساعت خالی را انتخاب کنید.";
       return;
     }
 
@@ -350,20 +405,23 @@
       },
       patient: {
         full_name: form.full_name.value,
-        national_id: nationalId,
-        phone: phone
+        national_id: form.national_id.value,
+        phone: form.phone.value
       },
       appointment: {
         doctor_id: doctorSelect.value,
         doctor_name: DOCTORS[doctorSelect.value],
-        date: date,              // شمسی: YYYY/MM/DD
-        time: hiddenTime.value,  // "10/11/12/13"
+        date: form.date.value,
+        time: hiddenTime.value,
         note: form.note.value
       },
       initData: tg.initData
     };
 
-    statusDiv.textContent = "در حال ارسال نوبت به سیستم...";
+    const submitBtn = document.getElementById("submit-btn");
+    submitBtn.textContent = "در حال ارسال...";
+    submitBtn.disabled = true;
+    statusDiv.textContent = "";
 
     try {
       const response = await fetch(MAKE_WEBHOOK_URL, {
@@ -373,21 +431,10 @@
       });
 
       if (response.ok) {
-        statusDiv.textContent = "✅ درخواست نوبت با موفقیت ارسال شد.";
+        statusDiv.innerHTML = "<span style='color:#4caf50'>✅ نوبت شما با موفقیت ثبت شد.</span>";
         tg.HapticFeedback.notificationOccurred('success');
-        setTimeout(() => tg.close(), 1500);
+        setTimeout(() => tg.close(), 2000);
       } else {
-        statusDiv.textContent = `❌ خطا در سیستم رزرو. کد خطا: ${response.status}`;
-        tg.HapticFeedback.notificationOccurred('error');
-      }
-
-    } catch (err) {
-      console.error("Fetch Error:", err);
-      statusDiv.textContent = "❌ خطای اتصال شبکه. لطفاً مجدداً تلاش کنید.";
-      tg.HapticFeedback.notificationOccurred('error');
-    }
-  });
-</script>
-
-</body>
-</html>
+        statusDiv.textContent = `❌ خطا در ثبت. کد: ${response.status}`;
+        submitBtn.textContent = "ثبت نوبت";
+        submitBtn.disabled
