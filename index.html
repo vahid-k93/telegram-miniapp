@@ -312,37 +312,18 @@
       }
   }
 
-  // --- دریافت ساعت‌ها ---
-  async function fetchAvailableSlots(doctorId, rawDate) {
-      if (!doctorId || !rawDate) return;
-
-      timeGrid.innerHTML = '<div class="loading-text">⏳ در حال بررسی ظرفیت پزشک...</div>';
-      hiddenTime.value = "";
-
+  // --- تست یک فرمت تاریخ خاص ---
+  async function tryFetchWithFormat(doctorId, rawDate, dateFormat, usePost) {
+      const formattedDate = formatDateForAPI(rawDate, dateFormat);
+      
       try {
-          // تبدیل تاریخ به فرمت مورد نیاز
-          const formattedDate = formatDateForAPI(rawDate, DATE_FORMAT_FOR_API);
-          
-          console.log("تاریخ ورودی (ISO):", rawDate);
-          console.log("تاریخ فرمت شده برای API:", formattedDate);
-          console.log("فرمت استفاده شده:", DATE_FORMAT_FOR_API);
-          
           let response;
           
-          if (USE_POST_FOR_SLOTS) {
-              // استفاده از POST - تاریخ در body ارسال می‌شود بدون مشکل encode
-              console.log("استفاده از روش POST");
-              
-              // ساخت body با نام‌های مختلف برای سازگاری بیشتر
+          if (usePost) {
               const requestBody = {
                   doctor_id: doctorId,
-                  date: formattedDate,
-                  // همچنین نام‌های جایگزین برای سازگاری
-                  doctorId: doctorId,
-                  Date: formattedDate
+                  date: formattedDate
               };
-              
-              console.log("Body ارسالی:", JSON.stringify(requestBody));
               
               response = await fetch(GET_SLOTS_URL, {
                   method: 'POST',
@@ -350,41 +331,92 @@
                   body: JSON.stringify(requestBody)
               });
           } else {
-              // استفاده از GET با query parameters
-              // برای GET، اگر تاریخ شامل / است، باید encode شود
               const url = `${GET_SLOTS_URL}?doctor_id=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(formattedDate)}`;
-              console.log("درخواست GET:", url);
               response = await fetch(url);
           }
           
           if (!response.ok) {
               const errorText = await response.text();
-              console.error("خطای سرور:", errorText);
-              throw new Error(`HTTP ${response.status}: ${errorText}`);
+              throw new Error(errorText);
           }
           
           const data = await response.json();
-          
-          // بررسی ساختار پاسخ
-          if (!data) {
-              throw new Error("پاسخ خالی از سرور دریافت شد");
-          }
-          
-          // پشتیبانی از ساختارهای مختلف پاسخ
           const slots = data.slots || data || [];
           
-          if (!Array.isArray(slots)) {
-              throw new Error("فرمت پاسخ نامعتبر: slots باید یک آرایه باشد");
+          if (Array.isArray(slots)) {
+              return { success: true, slots: slots, format: dateFormat };
           }
           
-          renderTimeButtons(slots);
-
+          throw new Error("پاسخ معتبر نیست");
       } catch (error) {
-          console.error("خطا در دریافت ساعت‌ها:", error);
+          return { success: false, error: error.message, format: dateFormat };
+      }
+  }
+
+  // --- دریافت ساعت‌ها با تست خودکار فرمت‌های مختلف ---
+  async function fetchAvailableSlots(doctorId, rawDate) {
+      if (!doctorId || !rawDate) return;
+
+      timeGrid.innerHTML = '<div class="loading-text">⏳ در حال بررسی ظرفیت پزشک...</div>';
+      hiddenTime.value = "";
+
+      console.log("=== شروع دریافت ساعت‌ها ===");
+      console.log("تاریخ ورودی (ISO):", rawDate);
+      console.log("Doctor ID:", doctorId);
+
+      try {
+          // ابتدا فرمت پیش‌فرض را امتحان می‌کنیم
+          let result = await tryFetchWithFormat(doctorId, rawDate, DATE_FORMAT_FOR_API, USE_POST_FOR_SLOTS);
+          
+          if (result.success) {
+              console.log("✅ موفق با فرمت:", result.format);
+              renderTimeButtons(result.slots);
+              return;
+          }
+          
+          console.warn("❌ فرمت پیش‌فرض کار نکرد:", result.error);
+          console.log("🔄 تست فرمت‌های دیگر...");
+          
+          // اگر کار نکرد، فرمت‌های دیگر را تست می‌کنیم
+          const formatsToTry = [
+              { format: 'iso', post: true },
+              { format: 'iso', post: false },
+              { format: 'sheet', post: true },
+              { format: 'sheet', post: false },
+              { format: 'european', post: true }
+          ];
+          
+          for (const test of formatsToTry) {
+              if (test.format === DATE_FORMAT_FOR_API && test.post === USE_POST_FOR_SLOTS) {
+                  continue; // قبلاً تست شده
+              }
+              
+              console.log(`تست فرمت: ${test.format}, POST: ${test.post}`);
+              result = await tryFetchWithFormat(doctorId, rawDate, test.format, test.post);
+              
+              if (result.success) {
+                  console.log(`✅ موفق با فرمت: ${result.format}, POST: ${test.post}`);
+                  renderTimeButtons(result.slots);
+                  return;
+              }
+              
+              console.warn(`❌ فرمت ${test.format} کار نکرد:`, result.error);
+          }
+          
+          // اگر هیچ فرمتی کار نکرد
+          throw new Error(`همه فرمت‌ها تست شدند اما هیچ کدام کار نکرد. آخرین خطا: ${result.error}`);
+          
+      } catch (error) {
+          console.error("=== خطای نهایی ===", error);
           const errorMsg = error.message || "خطای نامشخص";
-          timeGrid.innerHTML = `<div style="color:red; text-align:center; padding:10px;">
-              ❌ خطا در دریافت ساعت‌ها<br/>
-              <small style="font-size:12px; color:#999;">${errorMsg}</small>
+          
+          // نمایش خطای کامل برای دیباگ
+          timeGrid.innerHTML = `<div style="color:red; text-align:center; padding:15px; background:#2a1a1a; border-radius:10px; margin:10px 0;">
+              <div style="font-size:18px; margin-bottom:10px;">❌ خطا در دریافت ساعت‌ها</div>
+              <div style="font-size:13px; color:#ff9999; margin-bottom:10px;">${errorMsg}</div>
+              <div style="font-size:11px; color:#999; margin-top:10px;">
+                  💡 Console را باز کنید (F12) برای جزئیات بیشتر
+              </div>
           </div>`;
       }
   }
