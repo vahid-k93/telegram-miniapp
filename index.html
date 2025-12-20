@@ -325,6 +325,7 @@
                   date: formattedDate
               };
               
+              console.log(`  📤 POST با فرمت ${dateFormat}:`, formattedDate);
               response = await fetch(GET_SLOTS_URL, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -332,23 +333,72 @@
               });
           } else {
               const url = `${GET_SLOTS_URL}?doctor_id=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(formattedDate)}`;
+              console.log(`  📤 GET با فرمت ${dateFormat}:`, url);
               response = await fetch(url);
           }
           
+          // ابتدا پاسخ را به صورت text می‌خوانیم
+          const responseText = await response.text();
+          console.log(`  📥 پاسخ خام (${response.status}):`, responseText.substring(0, 500));
+          
           if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(errorText);
+              throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 200)}`);
           }
           
-          const data = await response.json();
-          const slots = data.slots || data || [];
+          // سعی می‌کنیم JSON را parse کنیم
+          let data;
+          try {
+              data = JSON.parse(responseText);
+          } catch (parseError) {
+              console.error("  ❌ خطای JSON Parse:", parseError.message);
+              console.error("  📄 محتوای پاسخ:", responseText);
+              
+              // شاید پاسخ یک آرایه مستقیم است یا فرمت دیگری دارد
+              // سعی می‌کنیم آن را به عنوان آرایه مستقیم parse کنیم
+              const trimmedText = responseText.trim();
+              
+              // اگر با [ شروع می‌شود، شاید یک آرایه JSON است
+              if (trimmedText.startsWith('[')) {
+                  try {
+                      data = JSON.parse(trimmedText);
+                  } catch (e) {
+                      throw new Error(`JSON نامعتبر. پاسخ: ${responseText.substring(0, 300)}`);
+                  }
+              } else {
+                  throw new Error(`پاسخ JSON نیست. محتوا: ${responseText.substring(0, 300)}`);
+              }
+          }
           
-          if (Array.isArray(slots)) {
+          // بررسی ساختار داده
+          let slots = null;
+          
+          if (Array.isArray(data)) {
+              slots = data; // پاسخ مستقیم یک آرایه است
+          } else if (data.slots && Array.isArray(data.slots)) {
+              slots = data.slots;
+          } else if (data.data && Array.isArray(data.data)) {
+              slots = data.data;
+          } else if (data.items && Array.isArray(data.items)) {
+              slots = data.items;
+          } else if (data.result && Array.isArray(data.result)) {
+              slots = data.result;
+          } else {
+              // اگر هیچ آرایه‌ای پیدا نشد، کل data را امتحان می‌کنیم
+              console.warn("  ⚠️ ساختار پاسخ نامشخص:", data);
+              throw new Error(`ساختار پاسخ نامعتبر. انتظار آرایه slots. دریافت: ${JSON.stringify(data).substring(0, 200)}`);
+          }
+          
+          if (Array.isArray(slots) && slots.length > 0) {
+              console.log(`  ✅ موفق! ${slots.length} slot پیدا شد`);
               return { success: true, slots: slots, format: dateFormat };
+          } else if (Array.isArray(slots)) {
+              console.log(`  ⚠️ آرایه خالی است`);
+              return { success: true, slots: [], format: dateFormat };
           }
           
-          throw new Error("پاسخ معتبر نیست");
+          throw new Error("پاسخ معتبر نیست - slots یک آرایه نیست");
       } catch (error) {
+          console.error(`  ❌ خطا با فرمت ${dateFormat}:`, error.message);
           return { success: false, error: error.message, format: dateFormat };
       }
   }
