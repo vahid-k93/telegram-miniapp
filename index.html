@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="fa">
 <head>
@@ -294,17 +295,40 @@
       hiddenTime.value = "";
 
       try {
-          const url = `${GET_SLOTS_URL}?doctor_id=${doctorId}&date=${formattedDate}`;
+          // URL encode کردن تاریخ برای جلوگیری از مشکل با کاراکتر /
+          const encodedDate = encodeURIComponent(formattedDate);
+          const url = `${GET_SLOTS_URL}?doctor_id=${encodeURIComponent(doctorId)}&date=${encodedDate}`;
+          
           const response = await fetch(url);
           
-          if (!response.ok) throw new Error("Network error");
+          if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
           
-          const data = await response.json(); 
-          renderTimeButtons(data.slots);
+          const data = await response.json();
+          
+          // بررسی ساختار پاسخ
+          if (!data) {
+              throw new Error("پاسخ خالی از سرور دریافت شد");
+          }
+          
+          // پشتیبانی از ساختارهای مختلف پاسخ
+          const slots = data.slots || data || [];
+          
+          if (!Array.isArray(slots)) {
+              throw new Error("فرمت پاسخ نامعتبر: slots باید یک آرایه باشد");
+          }
+          
+          renderTimeButtons(slots);
 
       } catch (error) {
-          console.error(error);
-          timeGrid.innerHTML = '<div style="color:red; text-align:center;">خطا در دریافت ساعت‌ها.</div>';
+          console.error("خطا در دریافت ساعت‌ها:", error);
+          const errorMsg = error.message || "خطای نامشخص";
+          timeGrid.innerHTML = `<div style="color:red; text-align:center; padding:10px;">
+              ❌ خطا در دریافت ساعت‌ها<br/>
+              <small style="font-size:12px; color:#999;">${errorMsg}</small>
+          </div>`;
       }
   }
 
@@ -312,21 +336,36 @@
   function renderTimeButtons(slots) {
       timeGrid.innerHTML = "";
       if (!slots || slots.length === 0) {
-          timeGrid.innerHTML = '<div style="grid-column: span 2; text-align: center;">هیچ ساعتی تعریف نشده است.</div>';
+          timeGrid.innerHTML = '<div style="grid-column: span 2; text-align: center; color: #777;">هیچ ساعتی تعریف نشده است.</div>';
           return;
       }
 
       slots.forEach(slot => {
           const btn = document.createElement("div");
           btn.className = "time-btn";
-          btn.textContent = slot.time;
-          btn.dataset.hour = slot.time;
+          
+          // بررسی وجود فیلد time در slot
+          const timeValue = slot.time || slot.hour || slot.slot || "";
+          if (!timeValue) {
+              console.warn("Slot بدون time:", slot);
+              return; // رد کردن slot های بدون time
+          }
+          
+          btn.textContent = timeValue;
+          btn.dataset.hour = timeValue;
 
-          if (slot.is_booked === true || slot.is_booked === "true") {
+          // بررسی وضعیت رزرو (پشتیبانی از فرمت‌های مختلف)
+          const isBooked = slot.is_booked === true || 
+                          slot.is_booked === "true" || 
+                          slot.is_booked === 1 ||
+                          slot.booked === true ||
+                          slot.booked === "true";
+
+          if (isBooked) {
               btn.classList.add("disabled");
               btn.textContent += " (پر)";
           } else {
-              btn.onclick = () => selectTime(btn, slot.time);
+              btn.onclick = () => selectTime(btn, timeValue);
           }
           timeGrid.appendChild(btn);
       });
