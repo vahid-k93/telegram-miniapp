@@ -226,14 +226,16 @@
   const GET_SLOTS_URL = 'https://hook.eu2.make.com/j78jo3phl99ov9vtwgg8r187nm95wiqd'; 
   
   // تنظیمات فرمت تاریخ برای دریافت ساعت‌ها
-  // گوگل شیت از فرمت MM/DD/YYYY استفاده می‌کند
-  // 'iso' = YYYY-MM-DD
-  // 'sheet' = MM/DD/YYYY (فرمت گوگل شیت)
+  // اگر خطای "pattern" می‌گیرید، فرمت را تغییر دهید:
+  // 'sheet' = MM/DD/YYYY (فرمت گوگل شیت) - پیش‌فرض
+  // 'iso' = YYYY-MM-DD (اگر make.com انتظار ISO دارد)
   // 'european' = DD/MM/YYYY
   const DATE_FORMAT_FOR_API = 'sheet'; // فرمت گوگل شیت: MM/DD/YYYY
+  // اگر با 'sheet' کار نکرد، 'iso' را امتحان کنید
   
-  // اگر make.com انتظار POST دارد، این را true کنید:
-  const USE_POST_FOR_SLOTS = false;
+  // استفاده از POST برای جلوگیری از مشکل encode در URL
+  // POST فعال است - تاریخ در body ارسال می‌شود
+  const USE_POST_FOR_SLOTS = true;
   // ============================================
 
   const DOCTORS = {
@@ -323,22 +325,33 @@
           
           console.log("تاریخ ورودی (ISO):", rawDate);
           console.log("تاریخ فرمت شده برای API:", formattedDate);
+          console.log("فرمت استفاده شده:", DATE_FORMAT_FOR_API);
           
           let response;
           
           if (USE_POST_FOR_SLOTS) {
-              // استفاده از POST
+              // استفاده از POST - تاریخ در body ارسال می‌شود بدون مشکل encode
               console.log("استفاده از روش POST");
+              
+              // ساخت body با نام‌های مختلف برای سازگاری بیشتر
+              const requestBody = {
+                  doctor_id: doctorId,
+                  date: formattedDate,
+                  // همچنین نام‌های جایگزین برای سازگاری
+                  doctorId: doctorId,
+                  Date: formattedDate
+              };
+              
+              console.log("Body ارسالی:", JSON.stringify(requestBody));
+              
               response = await fetch(GET_SLOTS_URL, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                      doctor_id: doctorId, 
-                      date: formattedDate 
-                  })
+                  body: JSON.stringify(requestBody)
               });
           } else {
               // استفاده از GET با query parameters
+              // برای GET، اگر تاریخ شامل / است، باید encode شود
               const url = `${GET_SLOTS_URL}?doctor_id=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(formattedDate)}`;
               console.log("درخواست GET:", url);
               response = await fetch(url);
