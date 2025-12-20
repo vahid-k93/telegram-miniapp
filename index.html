@@ -338,35 +338,52 @@
           }
           
           // ابتدا پاسخ را به صورت text می‌خوانیم
-          const responseText = await response.text();
+          let responseText = await response.text();
           console.log(`  📥 پاسخ خام (${response.status}):`, responseText.substring(0, 500));
           
           if (!response.ok) {
               throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 200)}`);
           }
           
-          // سعی می‌کنیم JSON را parse کنیم
+          // --- تلاش برای اصلاح JSON خراب ---
+          // 1. حذف کاراکترهای اضافی اول و آخر
+          responseText = responseText.trim();
+          
+          // 2. تبدیل None به null (اگر وجود داشته باشد)
+          if (responseText.includes('None')) {
+              console.warn("  ⚠️ پاسخ حاوی 'None' است، تبدیل به 'null'...");
+              responseText = responseText.replace(/: ?None/g, ': null');
+          }
+          
+          // 3. اصلاح مشکل چسبیدن آبجکت‌ها (مثلاً }{ -> }, {)
+          // این مشکل در make.com رایج است وقتی از Iterator بدون Array Aggregator استفاده می‌شود
+          if (responseText.includes('}{')) {
+              console.warn("  ⚠️ پاسخ حاوی آبجکت‌های چسبیده است، اصلاح...");
+              responseText = responseText.replace(/}\s*{/g, '}, {');
+          }
+          if (responseText.includes('}\n{')) {
+            responseText = responseText.replace(/}\s*\n\s*{/g, '}, {');
+          }
+
+          // 4. اگر پاسخ با [ شروع نمی‌شود ولی شبیه آبجکت است، آن را در آرایه می‌گذاریم
+          if (responseText.startsWith('{') && responseText.endsWith('}')) {
+              // چک کنیم شاید چند آبجکت با ویرگول جدا شده‌اند ولی در براکت نیستند
+              // یا شاید فقط یک آبجکت است
+              if (!responseText.startsWith('[')) {
+                   console.warn("  ⚠️ پاسخ در آرایه نیست، افزودن []...");
+                   responseText = `[${responseText}]`;
+              }
+          }
+          
+          // سعی می‌کنیم JSON اصلاح شده را parse کنیم
           let data;
           try {
               data = JSON.parse(responseText);
           } catch (parseError) {
               console.error("  ❌ خطای JSON Parse:", parseError.message);
-              console.error("  📄 محتوای پاسخ:", responseText);
+              console.error("  📄 محتوای نامعتبر:", responseText);
               
-              // شاید پاسخ یک آرایه مستقیم است یا فرمت دیگری دارد
-              // سعی می‌کنیم آن را به عنوان آرایه مستقیم parse کنیم
-              const trimmedText = responseText.trim();
-              
-              // اگر با [ شروع می‌شود، شاید یک آرایه JSON است
-              if (trimmedText.startsWith('[')) {
-                  try {
-                      data = JSON.parse(trimmedText);
-                  } catch (e) {
-                      throw new Error(`JSON نامعتبر. پاسخ: ${responseText.substring(0, 300)}`);
-                  }
-              } else {
-                  throw new Error(`پاسخ JSON نیست. محتوا: ${responseText.substring(0, 300)}`);
-              }
+              throw new Error(`فرمت JSON نامعتبر است (خطا در کاراکتر ${parseError.message.match(/\d+/)}). محتوا: ${responseText.substring(0, 100)}...`);
           }
           
           // بررسی ساختار داده
