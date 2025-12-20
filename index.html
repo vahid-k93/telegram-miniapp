@@ -349,31 +349,27 @@
           // 1. حذف کاراکترهای اضافی اول و آخر
           responseText = responseText.trim();
           
-          // 2. تبدیل None به null (اگر وجود داشته باشد)
-          if (responseText.includes('None')) {
-              console.warn("  ⚠️ پاسخ حاوی 'None' است، تبدیل به 'null'...");
-              responseText = responseText.replace(/: ?None/g, ': null');
+          // 2. اصلاح مقادیر پایتونی (None, True, False) به JSON
+          responseText = responseText.replace(/: ?None\b/g, ': null');
+          responseText = responseText.replace(/: ?True\b/g, ': true');
+          responseText = responseText.replace(/: ?False\b/g, ': false');
+          
+          // 3. اصلاح مشکل چسبیدن آبجکت‌ها (مثلاً }{ یا } { یا }\n{ به }, {)
+          // این خط بدون شرط اجرا می‌شود تا هر نوع فاصله‌ای را پوشش دهد
+          responseText = responseText.replace(/}\s*{/g, '}, {');
+          
+          // اصلاح مشکل چسبیدن آرایه‌ها (][ به ], [)
+          responseText = responseText.replace(/]\s*\[/g, '], [');
+
+          // 4. اگر پاسخ با [ شروع نمی‌شود ولی شبیه آبجکت است ({...})، آن را در آرایه می‌گذاریم
+          if (responseText.startsWith('{') && responseText.endsWith('}')) {
+               // اگر داخلش }, { داریم یعنی چند تا آبجکت بوده که ویرگول گذاشتیم، پس باید در آرایه باشد
+               // یا اگر فقط یک آبجکت است باز هم در آرایه می‌گذاریم تا یکدست شود
+               console.warn("  ⚠️ پاسخ در آرایه نیست، افزودن []...");
+               responseText = `[${responseText}]`;
           }
           
-          // 3. اصلاح مشکل چسبیدن آبجکت‌ها (مثلاً }{ -> }, {)
-          // این مشکل در make.com رایج است وقتی از Iterator بدون Array Aggregator استفاده می‌شود
-          if (responseText.includes('}{')) {
-              console.warn("  ⚠️ پاسخ حاوی آبجکت‌های چسبیده است، اصلاح...");
-              responseText = responseText.replace(/}\s*{/g, '}, {');
-          }
-          if (responseText.includes('}\n{')) {
-            responseText = responseText.replace(/}\s*\n\s*{/g, '}, {');
-          }
-
-          // 4. اگر پاسخ با [ شروع نمی‌شود ولی شبیه آبجکت است، آن را در آرایه می‌گذاریم
-          if (responseText.startsWith('{') && responseText.endsWith('}')) {
-              // چک کنیم شاید چند آبجکت با ویرگول جدا شده‌اند ولی در براکت نیستند
-              // یا شاید فقط یک آبجکت است
-              if (!responseText.startsWith('[')) {
-                   console.warn("  ⚠️ پاسخ در آرایه نیست، افزودن []...");
-                   responseText = `[${responseText}]`;
-              }
-          }
+          console.log("  🔧 متن اصلاح شده:", responseText.substring(0, 500));
           
           // سعی می‌کنیم JSON اصلاح شده را parse کنیم
           let data;
@@ -381,36 +377,49 @@
               data = JSON.parse(responseText);
           } catch (parseError) {
               console.error("  ❌ خطای JSON Parse:", parseError.message);
-              console.error("  📄 محتوای نامعتبر:", responseText);
-              
-              throw new Error(`فرمت JSON نامعتبر است (خطا در کاراکتر ${parseError.message.match(/\d+/)}). محتوا: ${responseText.substring(0, 100)}...`);
+              // تلاش نهایی: شاید یک ویرگول اضافی آخرش باشد (مثلاً },])
+              try {
+                  const fixedComma = responseText.replace(/,\s*]/g, ']');
+                  data = JSON.parse(fixedComma);
+              } catch (e2) {
+                  throw new Error(`فرمت JSON نامعتبر است (خطا در کاراکتر ${parseError.message.match(/\d+/)}). محتوا: ${responseText.substring(0, 100)}...`);
+              }
           }
           
-          // بررسی ساختار داده
+          // بررسی ساختار داده و استخراج slots
           let slots = null;
           
           if (Array.isArray(data)) {
-              slots = data; // پاسخ مستقیم یک آرایه است
-          } else if (data.slots && Array.isArray(data.slots)) {
+              // حالت اول: پاسخ مستقیم آرایه slot هاست: [{"time":...}, {"time":...}]
+              // بررسی می‌کنیم آیا عنصر اول slots دارد یا خودش slot است
+              if (data.length > 0 && data[0].slots) {
+                  // حالت دوم: آرایه‌ای از باندل‌ها که هر کدام slots دارند: [{"slots": [...]}]
+                  // معمولاً ما فقط اولی را می‌خواهیم یا باید همه را ادغام کنیم
+                  console.log("  📦 پاسخ آرایه‌ای از باندل‌هاست");
+                  slots = data[0].slots; 
+              } else {
+                  // خود آرایه، لیست slot هاست
+                  slots = data;
+              }
+          } else if (data && data.slots && Array.isArray(data.slots)) { // اصلاح: چک کردن وجود data
               slots = data.slots;
-          } else if (data.data && Array.isArray(data.data)) {
+          } else if (data && data.data && Array.isArray(data.data)) {
               slots = data.data;
-          } else if (data.items && Array.isArray(data.items)) {
+          } else if (data && data.items && Array.isArray(data.items)) {
               slots = data.items;
-          } else if (data.result && Array.isArray(data.result)) {
-              slots = data.result;
           } else {
-              // اگر هیچ آرایه‌ای پیدا نشد، کل data را امتحان می‌کنیم
-              console.warn("  ⚠️ ساختار پاسخ نامشخص:", data);
-              throw new Error(`ساختار پاسخ نامعتبر. انتظار آرایه slots. دریافت: ${JSON.stringify(data).substring(0, 200)}`);
+             // اگر هیچ آرایه‌ای پیدا نشد، کل data را امتحان می‌کنیم
+             console.warn("  ⚠️ ساختار پاسخ نامشخص:", data);
+             // شاید data خودش یک آبجکت است که باید در آرایه باشد؟ نه، این کار خطرناک است.
           }
           
-          if (Array.isArray(slots) && slots.length > 0) {
+          if (!slots) {
+             throw new Error(`ساختار پاسخ نامعتبر. انتظار آرایه slots. دریافت: ${JSON.stringify(data).substring(0, 200)}`);
+          }
+          
+          if (Array.isArray(slots)) {
               console.log(`  ✅ موفق! ${slots.length} slot پیدا شد`);
               return { success: true, slots: slots, format: dateFormat };
-          } else if (Array.isArray(slots)) {
-              console.log(`  ⚠️ آرایه خالی است`);
-              return { success: true, slots: [], format: dateFormat };
           }
           
           throw new Error("پاسخ معتبر نیست - slots یک آرایه نیست");
